@@ -1,0 +1,11 @@
+{
+  "_comment": "GSPO 评测示例配置。实际训练后建议优先使用 scripts/post_train_eval.py。",
+  "dataset_path": "datasets/processed/math500_test/test.jsonl",
+  "dataset_name": "math500",
+  "model": "outputs/train/gspo_math/checkpoint_best",
+  "output_path": "outputs/eval/gspo_math/math500.json",
+  "max_new_tokens": 2048,
+  "batch_size": 4,
+  "device": "auto",
+  "dtype": "auto"
+}

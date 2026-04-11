@@ -1,0 +1,11 @@
+{
+  "_comment": "Baseline 评测（base model 未训练）。运行完成后三个核心指标将作为 baseline 参照",
+  "dataset_path": "datasets/processed/math500_test/test.jsonl",
+  "dataset_name": "math500",
+  "model": "models/Qwen2.5-Math-1.5B-Instruct",
+  "output_path": "outputs/eval/baseline/math500.json",
+  "max_new_tokens": 2048,
+  "batch_size": 4,
+  "device": "auto",
+  "dtype": "auto"
+}
