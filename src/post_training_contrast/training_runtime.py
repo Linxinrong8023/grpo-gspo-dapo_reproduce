@@ -30,10 +30,8 @@ RAW_WANDB_TRAIN_METRIC_NAMES = {
     "train/skipped_step",
     "train/update_step",
     "train/dapo_num_gen_batches",
-    "train/dapo_candidate_prompt_count",
     "train/dapo_mixed_prompt_count",
     "train/dapo_rejected_prompt_count",
-    "train/dapo_recycled_prompt_count",
 }
 
 
@@ -96,30 +94,23 @@ def _wandb_train_metrics_from_result(
         "train/accuracy": result.accuracy,
         "train/answer_reward_mean": result.answer_reward_mean,
         "train/format_reward_mean": result.format_reward_mean,
-        "train/total_reward_mean": result.total_reward_mean,
-        "train/truncation_rate": result.truncation_rate,
-        "train/parse_fail_rate": result.parse_fail_rate,
-        "train/mean_response_length": result.mean_response_length,
-        "train/group_all_correct_rate": result.group_all_correct_rate,
         "train/group_all_wrong_rate": result.group_all_wrong_rate,
-        "train/group_mixed_answer_rate": result.group_mixed_answer_rate,
-        "train/group_signal_rate": result.group_signal_rate,
-        "train/group_total_reward_std_mean": result.group_total_reward_std_mean,
         "train/loss": result.update_losses[-1]
         if result.update_losses
         else float("nan"),
-        "train/policy_entropy": result.policy_entropy,
-        "train/approx_kl": result.approx_kl,
-        "train/ref_kl": result.ref_kl,
-        "train/clip_fraction": result.clip_fraction,
         "train/skipped_step": float(result.skipped_step),
         "train/update_step": update_step_idx,
     }
-    for metric_name, metric_value in result.extra_metrics.items():
-        if isinstance(metric_value, bool):
-            metrics[f"train/{metric_name}"] = float(metric_value)
-        elif isinstance(metric_value, (int, float)):
-            metrics[f"train/{metric_name}"] = metric_value
+    dapo_wandb_metrics = {
+        "train/dapo_num_gen_batches": "dapo_num_gen_batches",
+        "train/dapo_mixed_prompt_count": "dapo_mixed_prompt_count",
+        "train/dapo_rejected_prompt_count": "dapo_rejected_prompt_count",
+        "train/dapo_sampling_acceptance_rate": "dapo_sampling_acceptance_rate",
+    }
+    for wandb_name, extra_metric_name in dapo_wandb_metrics.items():
+        metric_value = result.extra_metrics.get(extra_metric_name)
+        if isinstance(metric_value, (int, float)):
+            metrics[wandb_name] = metric_value
     return metrics
 
 
