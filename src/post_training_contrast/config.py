@@ -108,6 +108,10 @@ class TrainConfig:
     dapo_gen_prompt_batch_size: int | None = None
     dapo_max_num_gen_batches: int = 6
     dapo_min_mixed_prompt_batch_size: int = 24
+    dapo_overlong_cache_ratio: float = 0.1
+    # ^^^ soft zone 宽度 = max_new_tokens * dapo_overlong_cache_ratio
+    # 默认 0.1：safe_length = 0.9 * max_new_tokens，最后 10% 才开始线性扣分
+    # 原硬编码为 0.25（safe_length = 75% max_new_tokens），对 math 推理过于激进
 
     # LoRA（use_lora=False 时以下所有字段均被忽略）
     use_lora: bool = False

@@ -37,6 +37,7 @@
   "dapo_gen_prompt_batch_size": 32,
   "dapo_max_num_gen_batches": 6,
   "dapo_min_mixed_prompt_batch_size": 24,
+  "dapo_overlong_cache_ratio": 0.1,
   "use_lora": true,
   "lora_r": 16,
   "lora_alpha": 32,

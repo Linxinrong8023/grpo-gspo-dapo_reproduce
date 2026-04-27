@@ -177,7 +177,20 @@ class DAPOAlgorithm(Algorithm):
         prepared = rollout_batch
 
         if config.dapo_use_overlong_penalty and prepared.rewards is not None:
-            cache_length = max(1, config.max_new_tokens // 4)
+            # cache_ratio 控制 soft zone 宽度：
+            #   safe_length  = max_new_tokens * (1 - cache_ratio)   → 低于此长度无惩罚
+            #   hard_length  = max_new_tokens                        → 超过此长度固定 -1
+            # 默认 cache_ratio=0.1：safe_length = 90% * max_new_tokens，只有最后 10% 才扣分
+            # 原硬编码 0.25 导致 75% 处就开始扣，对 math 推理太激进
+            cache_ratio = getattr(config, "dapo_overlong_cache_ratio", 0.1)
+            cache_length = max(1, int(config.max_new_tokens * cache_ratio))
+            safe_length = config.max_new_tokens - cache_length
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                "[DAPO overlong penalty] max_new_tokens=%d  cache_ratio=%.2f  "
+                "safe_length=%d (no penalty)  hard_length=%d (full -1 penalty)",
+                config.max_new_tokens, cache_ratio, safe_length, config.max_new_tokens,
+            )
             prepared.rewards = apply_overlong_reward_penalty(
                 base_rewards=prepared.rewards,
                 response_lengths=prepared.response_lengths,
