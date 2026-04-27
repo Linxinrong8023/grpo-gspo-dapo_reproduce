@@ -30,8 +30,10 @@ RAW_WANDB_TRAIN_METRIC_NAMES = {
     "train/skipped_step",
     "train/update_step",
     "train/dapo_num_gen_batches",
+    "train/dapo_candidate_prompt_count",
     "train/dapo_mixed_prompt_count",
     "train/dapo_rejected_prompt_count",
+    "train/dapo_overflow_mixed_prompt_count",
 }
 
 
@@ -110,8 +112,10 @@ def _wandb_train_metrics_from_result(
     }
     dapo_wandb_metrics = {
         "train/dapo_num_gen_batches": "dapo_num_gen_batches",
+        "train/dapo_candidate_prompt_count": "dapo_candidate_prompt_count",
         "train/dapo_mixed_prompt_count": "dapo_mixed_prompt_count",
         "train/dapo_rejected_prompt_count": "dapo_rejected_prompt_count",
+        "train/dapo_overflow_mixed_prompt_count": "dapo_overflow_mixed_prompt_count",
         "train/dapo_sampling_acceptance_rate": "dapo_sampling_acceptance_rate",
     }
     for wandb_name, extra_metric_name in dapo_wandb_metrics.items():

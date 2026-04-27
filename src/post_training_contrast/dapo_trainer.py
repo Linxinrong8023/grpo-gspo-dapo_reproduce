@@ -248,9 +248,20 @@ class DapoDynamicTrainer(RlTrainer):
         candidate_pool.recycle(rejected_records)
 
         qualified = self._concat_rollout_batches(qualified_batches, group_size)
+        sampled_mixed_prompt_count = mixed_prompt_count
+        overflow_mixed_prompt_count = 0
+        overflow_records: list[dict] = []
         if len(qualified.samples) > target_sample_count:
+            overflow_start = target_sample_count
+            overflow_records = self._group_records_from_batch(
+                qualified,
+                start_sample_idx=overflow_start,
+            )
+            overflow_mixed_prompt_count = len(overflow_records)
             qualified = qualified.slice(list(range(target_sample_count)))
             mixed_prompt_count = target_prompt_count
+            if overflow_records:
+                candidate_pool.recycle(overflow_records)
 
         pool_exhausted = (
             mixed_prompt_count < target_prompt_count
@@ -367,10 +378,12 @@ class DapoDynamicTrainer(RlTrainer):
                 "dapo_num_gen_batches": num_gen_batches,
                 "dapo_candidate_prompt_count": candidate_prompt_count,
                 "dapo_mixed_prompt_count": mixed_prompt_count,
+                "dapo_sampled_mixed_prompt_count": sampled_mixed_prompt_count,
+                "dapo_overflow_mixed_prompt_count": overflow_mixed_prompt_count,
                 "dapo_rejected_prompt_count": len(rejected_records),
                 "dapo_recycled_prompt_count": recycled_prompt_count,
                 "dapo_sampling_acceptance_rate": self._safe_mean(
-                    mixed_prompt_count,
+                    sampled_mixed_prompt_count,
                     candidate_prompt_count,
                 ),
             },
@@ -443,6 +456,20 @@ class DapoDynamicTrainer(RlTrainer):
             records=records,
         )
 
+    @staticmethod
+    def _group_records_from_batch(
+        batch: RolloutBatch,
+        *,
+        start_sample_idx: int,
+    ) -> list[dict]:
+        if batch.records is None:
+            return []
+        group_size = batch.group_size
+        records: list[dict] = []
+        for sample_idx in range(start_sample_idx, len(batch.samples), group_size):
+            records.append(batch.records[sample_idx])
+        return records
+
     def _build_skipped_result(
         self,
         *,
@@ -500,6 +527,8 @@ class DapoDynamicTrainer(RlTrainer):
                 "dapo_num_gen_batches": num_gen_batches,
                 "dapo_candidate_prompt_count": candidate_prompt_count,
                 "dapo_mixed_prompt_count": mixed_prompt_count,
+                "dapo_sampled_mixed_prompt_count": mixed_prompt_count,
+                "dapo_overflow_mixed_prompt_count": 0,
                 "dapo_rejected_prompt_count": rejected_prompt_count,
                 "dapo_recycled_prompt_count": recycled_prompt_count,
                 "dapo_sampling_acceptance_rate": self._safe_mean(
