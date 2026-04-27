@@ -94,6 +94,9 @@ def _wandb_train_metrics_from_result(
         "train/accuracy": result.accuracy,
         "train/answer_reward_mean": result.answer_reward_mean,
         "train/format_reward_mean": result.format_reward_mean,
+        "train/truncation_rate": result.truncation_rate,
+        "train/parse_fail_rate": result.parse_fail_rate,
+        "train/mean_response_length": result.mean_response_length,
         "train/group_all_wrong_rate": result.group_all_wrong_rate,
         "train/loss": result.update_losses[-1]
         if result.update_losses
