@@ -114,9 +114,10 @@ class PolicyUpdateResult:
     update_losses: list[float]
     mini_batch_losses: list[float]
     approx_kl: float
-    ref_kl: float
+    ref_kl: float          # 只有 GRPO/GSPO（有 reference_policy）时才有意义；DAPO 恒为 0.0
     clip_fraction: float
     policy_entropy: float
+    has_ref_model: bool = False  # 标记本次 update 是否实际使用了 reference model
 
 
 def _preview_text(text: str, max_chars: int) -> str:
@@ -384,7 +385,11 @@ class RlTrainer:
         config: TrainConfig,
         update_actor: bool,
     ) -> PolicyUpdateResult:
-        """执行 Step 5：在已 materialize 的 batch 上跑 μ 次 policy update。"""
+        """执行 Step 5：在已 materialize 的 batch 上跑 μ 次 policy update。
+
+        ref_kl 的计算和收集只在 self.reference_policy is not None 时执行，
+        DAPO 路径（reference_policy=None）完全跳过，不产生任何 ref_kl 中间数据。
+        """
         if torch.cuda.is_available():
             alloc = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
@@ -392,12 +397,15 @@ class RlTrainer:
                 "[GPU memory] allocated=%.2f GB  reserved=%.2f GB", alloc, reserved
             )
 
+        # 是否有 reference model（GRPO/GSPO 有；DAPO 没有）
+        has_ref_model = self.reference_policy is not None
+
         update_losses: list[float] = []
         mini_batch_losses: list[float] = []
         did_update_actor = False
         accum_steps = max(1, config.gradient_accumulation_steps)
         all_approx_kl: list[float] = []
-        all_ref_kl: list[float] = []
+        all_ref_kl: list[float] = []   # 只有 has_ref_model=True 时才会被填充
         all_clip_fraction: list[float] = []
         all_entropy: list[float] = []
 
@@ -422,8 +430,9 @@ class RlTrainer:
                     len(indices),
                 )
 
+                # ── Reference logprobs（GRPO/GSPO 专属，DAPO 跳过）────────
                 ref_logprobs = None
-                if self.reference_policy is not None:
+                if has_ref_model:
                     logger.info("[train_step]   Computing reference logprobs...")
                     with torch.no_grad():
                         ref_output = self.reference_policy.compute_logprobs(mini_batch)
@@ -459,6 +468,9 @@ class RlTrainer:
                 if ref_logprobs is not None:
                     ref_logprobs = _align_seq_len(ref_logprobs, target_len)
 
+                # algorithm.make_policy_loss_batch 内部会根据算法类型决定是否使用 ref_logprobs：
+                # - GRPO/GSPO: 透传 ref_logprobs
+                # - DAPO: 强制置 None（DAPOAlgorithm 覆写了 make_policy_loss_batch）
                 policy_loss_batch = algorithm.make_policy_loss_batch(
                     mini_batch, current_logprobs, ref_logprobs
                 )
@@ -469,8 +481,11 @@ class RlTrainer:
                 mini_batch_losses.append(loss_val)
                 logger.info("[train_step]   loss=%.6f", loss_val)
                 all_approx_kl.append(float(algo_output.approx_kl.detach()))
-                all_ref_kl.append(float(algo_output.mean_ref_kl.detach()))
                 all_clip_fraction.append(float(algo_output.clip_fraction.detach()))
+
+                # ── ref_kl 只在有 reference model 时收集（GRPO/GSPO 专属）──
+                if has_ref_model:
+                    all_ref_kl.append(float(algo_output.mean_ref_kl.detach()))
 
                 if update_actor:
                     scaled_loss = algo_output.loss / accum_steps
@@ -505,9 +520,10 @@ class RlTrainer:
             update_losses=update_losses,
             mini_batch_losses=mini_batch_losses,
             approx_kl=_safe_mean(all_approx_kl),
-            ref_kl=_safe_mean(all_ref_kl),
+            ref_kl=_safe_mean(all_ref_kl),  # DAPO 时 all_ref_kl 为空 → 0.0
             clip_fraction=_safe_mean(all_clip_fraction),
             policy_entropy=_safe_mean(all_entropy),
+            has_ref_model=has_ref_model,
         )
 
     def train_step(
@@ -532,6 +548,13 @@ class RlTrainer:
             raise ValueError("num_policy_updates 至少为 1。")
 
         algorithm = resolve_algorithm(config.algorithm_name)
+
+        # ── 算法路径校验日志 ─────────────────────────────────────
+        logger.info(
+            "[train_step] algorithm=%s  has_ref_model=%s",
+            algorithm.name,
+            self.reference_policy is not None,
+        )
 
         # ── Step 1：Rollout ──────────────────────────────────────
         logger.info(
@@ -1362,7 +1385,10 @@ def run_training(config: TrainConfig) -> dict:
         model=actor_model, pad_token_id=tokenizer.pad_token_id
     )
     ref_model = None
-    if config.use_lora:
+    if config.algorithm_name.lower() == "dapo":
+        ref_policy = None
+        logger.info("DAPO uses no reference KL penalty; reference policy is disabled.")
+    elif config.use_lora:
         ref_policy = CausalLmPolicy(
             model=actor_model,
             pad_token_id=tokenizer.pad_token_id,

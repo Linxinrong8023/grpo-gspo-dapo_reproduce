@@ -19,7 +19,6 @@ from src.post_training_contrast.algorithms.base import (
     PolicyLossOutput,
     build_loss_output,
     compute_clip_fraction,
-    compute_reference_kl,
     compute_sequence_ratio,
     masked_mean,
     validate_policy_loss_batch,
@@ -33,13 +32,13 @@ def compute_dapo_loss(
     batch: PolicyLossBatch,
     clip_epsilon_low: float = 0.2,
     clip_epsilon_high: float = 0.28,
-    kl_beta: float = 0.0,
 ) -> PolicyLossOutput:
     """DAPO 的 Decoupled Clipping token-level objective。
 
     与 GRPO 的区别：lower bound 和 upper bound 的 epsilon 分开设置。
     论文默认 clip_epsilon_low=0.2, clip_epsilon_high=0.28。
     loss 用全局 token 均值（与 GRPO 的 per-seq mean 不同，DAPO 论文明确指定）。
+    DAPO 论文移除了 reference KL penalty，因此这里不向 loss 加 KL 项。
     """
     validate_policy_loss_batch(batch)
 
@@ -54,9 +53,6 @@ def compute_dapo_loss(
 
     # DAPO 用全局 token 均值（所有 token 等权）
     loss = -masked_mean(per_token_objective, batch.token_mask)
-
-    if kl_beta > 0.0 and batch.ref_logprobs is not None:
-        loss = loss + kl_beta * compute_reference_kl(batch)
 
     return build_loss_output(
         batch=batch,
@@ -134,9 +130,39 @@ class DAPOAlgorithm(Algorithm):
 
     在 prepare_batch 中处理 overlong penalty 和 dynamic sampling，
     这两步必须在 advantage 计算之前完成。
+
+    DAPO 论文明确移除了 reference model KL penalty，因此：
+      - make_policy_loss_batch 强制 ref_logprobs=None，屏蔽上游误传
+      - compute_loss 不加任何 KL 惩罚项
     """
 
     name = "dapo"
+
+    def make_policy_loss_batch(
+        self,
+        rollout_batch,
+        current_logprobs: torch.Tensor,
+        ref_logprobs: torch.Tensor | None,
+    ) -> PolicyLossBatch:
+        """DAPO 不使用 reference model，强制 ref_logprobs=None。
+
+        即使上游（trainer）误传了 ref_logprobs，也在此处丢弃，
+        确保 DAPO 的 loss 计算路径与 ref model 完全解耦。
+        """
+        if ref_logprobs is not None:
+            # 防御性警告：正常情况下 DAPO 的 reference_policy=None，不会产生 ref_logprobs
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "[DAPOAlgorithm] ref_logprobs was passed but DAPO does not use a "
+                "reference model; ignoring ref_logprobs to avoid incorrect KL computation."
+            )
+        return PolicyLossBatch(
+            logprobs=current_logprobs,
+            old_logprobs=rollout_batch.old_logprobs,
+            advantages=rollout_batch.advantages,
+            token_mask=rollout_batch.token_mask,
+            ref_logprobs=None,  # DAPO 明确不使用 reference model
+        )
 
     def prepare_batch(self, rollout_batch, config):
         """应用 DAPO 专属的 batch 预处理。
@@ -179,5 +205,4 @@ class DAPOAlgorithm(Algorithm):
             batch=batch,
             clip_epsilon_low=config.dapo_clip_epsilon_low,
             clip_epsilon_high=config.dapo_clip_epsilon_high,
-            kl_beta=config.kl_beta,
         )

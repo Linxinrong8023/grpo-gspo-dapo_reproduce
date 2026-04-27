@@ -53,6 +53,9 @@ def _step_summary_from_result(
     num_diagnostic_samples: int,
     current_lr: float,
 ) -> dict:
+    # DAPO 不使用 reference model， ref_kl 字段在 JSON summary 里记为 null，
+    # 避免和真正为 0.0 的情况混淆。
+    ref_kl_value = None if result.algorithm_name == "dapo" else result.ref_kl
     payload = {
         "step": step_idx,
         "update_step": update_step_idx,
@@ -77,7 +80,7 @@ def _step_summary_from_result(
         "group_signal_rate": result.group_signal_rate,
         "group_total_reward_std_mean": result.group_total_reward_std_mean,
         "approx_kl": result.approx_kl,
-        "ref_kl": result.ref_kl,
+        "ref_kl": ref_kl_value,
         "clip_fraction": result.clip_fraction,
         "policy_entropy": result.policy_entropy,
         "update_losses": result.update_losses,
@@ -104,12 +107,13 @@ def _wandb_train_metrics_from_result(
         if result.update_losses
         else float("nan"),
         "train/approx_kl": result.approx_kl,
-        "train/ref_kl": result.ref_kl,
         "train/clip_fraction": result.clip_fraction,
         "train/policy_entropy": result.policy_entropy,
         "train/skipped_step": float(result.skipped_step),
         "train/update_step": update_step_idx,
     }
+    if result.algorithm_name != "dapo":
+        metrics["train/ref_kl"] = result.ref_kl
     dapo_wandb_metrics = {
         "train/dapo_num_gen_batches": "dapo_num_gen_batches",
         "train/dapo_candidate_prompt_count": "dapo_candidate_prompt_count",

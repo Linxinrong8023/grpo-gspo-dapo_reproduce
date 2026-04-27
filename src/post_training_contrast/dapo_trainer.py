@@ -37,7 +37,6 @@ from src.post_training_contrast.trainer import (
     _init_rollout_sync_state,
     _init_wandb,
     _load_actor,
-    _load_reference,
 )
 from src.post_training_contrast.training_runtime import (
     TrainingStepRequest,
@@ -573,19 +572,8 @@ def run_dapo_dynamic_training(config: TrainConfig) -> dict:
     actor_policy = CausalLmPolicy(
         model=actor_model, pad_token_id=tokenizer.pad_token_id
     )
-    if config.use_lora:
-        ref_policy = CausalLmPolicy(
-            model=actor_model,
-            pad_token_id=tokenizer.pad_token_id,
-            disable_adapter=True,
-            enforce_eval_mode=True,
-        )
-    else:
-        ref_model = _load_reference(config, device, dtype_name)
-        ref_policy = CausalLmPolicy(
-            model=ref_model,
-            pad_token_id=tokenizer.pad_token_id,
-        )
+    ref_policy = None
+    logger.info("DAPO uses no reference KL penalty; reference policy is disabled.")
 
     optimizer = torch.optim.AdamW(
         [p for p in actor_model.parameters() if p.requires_grad],
