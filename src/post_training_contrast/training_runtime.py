@@ -101,6 +101,10 @@ def _wandb_train_metrics_from_result(
         "train/loss": result.update_losses[-1]
         if result.update_losses
         else float("nan"),
+        "train/approx_kl": result.approx_kl,
+        "train/ref_kl": result.ref_kl,
+        "train/clip_fraction": result.clip_fraction,
+        "train/policy_entropy": result.policy_entropy,
         "train/skipped_step": float(result.skipped_step),
         "train/update_step": update_step_idx,
     }

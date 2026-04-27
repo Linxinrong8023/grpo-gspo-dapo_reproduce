@@ -247,6 +247,7 @@ def load_train_config() -> TrainConfig:
     parser.add_argument("--dataset-name")
     parser.add_argument("--output-dir")
     parser.add_argument("--algorithm-name")
+    parser.add_argument("--num-epochs", type=int)
     parser.add_argument("--max-samples", type=int)
     parser.add_argument("--max-steps", type=int)
     parser.add_argument("--prompt-batch-size", type=int)
@@ -273,6 +274,7 @@ def load_train_config() -> TrainConfig:
         "dataset_name": args.dataset_name,
         "output_dir": args.output_dir,
         "algorithm_name": args.algorithm_name,
+        "num_epochs": args.num_epochs,
         "max_samples": args.max_samples,
         "max_steps": args.max_steps,
         "prompt_batch_size": args.prompt_batch_size,

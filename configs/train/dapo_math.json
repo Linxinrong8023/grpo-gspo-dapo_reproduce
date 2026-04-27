@@ -42,7 +42,7 @@
   "lora_alpha": 32,
   "lora_dropout": 0.05,
   "kl_beta": 0.01,
-  "track_policy_entropy": false,
+  "track_policy_entropy": true,
   "wandb_project": "post_training_contrast",
   "wandb_run_name": "dapo_qwen2.5_1.5b_instruct",
   "wandb_enabled": true,
