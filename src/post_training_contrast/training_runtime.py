@@ -26,6 +26,17 @@ from src.post_training_contrast.trainer import (
 logger = logging.getLogger(__name__)
 
 
+RAW_WANDB_TRAIN_METRIC_NAMES = {
+    "train/skipped_step",
+    "train/update_step",
+    "train/dapo_num_gen_batches",
+    "train/dapo_candidate_prompt_count",
+    "train/dapo_mixed_prompt_count",
+    "train/dapo_rejected_prompt_count",
+    "train/dapo_recycled_prompt_count",
+}
+
+
 @dataclass(frozen=True)
 class TrainingStepRequest:
     step_idx: int
@@ -220,6 +231,9 @@ def run_training_event_loop(
             train_metrics_for_wandb,
             window_size=20,
         )
+        for metric_name in RAW_WANDB_TRAIN_METRIC_NAMES:
+            if metric_name in train_metrics_for_wandb:
+                smoothed_train_metrics[metric_name] = train_metrics_for_wandb[metric_name]
         smoothed_train_metrics["train/lr"] = current_lr
         _wandb_log(
             step=step_idx,
