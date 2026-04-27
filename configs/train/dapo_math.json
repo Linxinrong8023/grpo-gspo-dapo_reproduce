@@ -4,7 +4,7 @@
   "model": "models/Qwen2.5-1.5B-Instruct",
   "output_dir": "outputs/train/dapo_math_7000",
   "seed": 42,
-  "num_epochs": 2,
+  "num_epochs": 4,
   "shuffle_prompts_each_epoch": true,
   "learning_rate": 1e-05,
   "lr_schedule": "cosine",
