@@ -2,7 +2,7 @@
 post_train_eval.py - 训练后处理入口。
 
 职责：
-  1. 读取 train_summary.json
+  1. 读取 train_summary.json（如存在）
   2. 解析 checkpoint（best / final / stepNNN）
   3. 如有需要，自动 merge LoRA adapter
   4. 调用现有 evaluator 跑 Math500
@@ -40,18 +40,41 @@ def run_evaluation(config: EvalConfig) -> dict:
     return _run_evaluation(config)
 
 
-def _load_train_summary(train_output_dir: Path) -> dict:
+def _load_train_summary(train_output_dir: Path) -> dict | None:
     summary_path = train_output_dir / "train_summary.json"
+    if not summary_path.exists():
+        return None
     with open(summary_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def _resolve_base_model_path(summary: dict) -> str:
-    trainer_config = summary.get("trainer_config") or {}
-    model_path = trainer_config.get("model") or summary.get("model")
-    if not model_path:
-        raise ValueError("train_summary.json 缺少 base model 路径。")
-    return str(model_path)
+def _load_lora_base_model_path(adapter_dir: Path) -> str | None:
+    adapter_config_path = adapter_dir / "adapter_config.json"
+    if not adapter_config_path.exists():
+        return None
+    with open(adapter_config_path, "r", encoding="utf-8") as f:
+        adapter_config = json.load(f)
+    model_path = adapter_config.get("base_model_name_or_path")
+    return str(model_path) if model_path else None
+
+
+def _resolve_base_model_path(
+    summary: dict | None,
+    base_model_path: str | None = None,
+    adapter_dir: Path | None = None,
+) -> str | None:
+    if base_model_path:
+        return str(base_model_path)
+
+    trainer_config = (summary or {}).get("trainer_config") or {}
+    model_path = trainer_config.get("model") or (summary or {}).get("model")
+    if model_path:
+        return str(model_path)
+
+    if adapter_dir is not None:
+        return _load_lora_base_model_path(adapter_dir)
+
+    return None
 
 
 def _resolve_checkpoint_dir(train_output_dir: Path, checkpoint: str) -> Path:
@@ -111,6 +134,7 @@ def merge_lora_checkpoint(
 def run_post_train_eval(
     train_output_dir: str | Path,
     checkpoint: str = "best",
+    base_model_path: str | None = None,
     dataset_path: str = DEFAULT_MATH500_PATH,
     dataset_name: str = "math500",
     output_path: str | None = None,
@@ -126,20 +150,29 @@ def run_post_train_eval(
 ) -> dict:
     train_output_dir = Path(train_output_dir)
     summary = _load_train_summary(train_output_dir)
-    base_model_path = _resolve_base_model_path(summary)
     checkpoint_dir = _resolve_checkpoint_dir(train_output_dir, checkpoint)
 
     model_path = checkpoint_dir
     merged_from_lora = _is_lora_adapter_checkpoint(checkpoint_dir)
+    resolved_base_model_path = _resolve_base_model_path(
+        summary,
+        base_model_path=base_model_path,
+        adapter_dir=checkpoint_dir if merged_from_lora else None,
+    )
     merged_model_path: str | None = None
     if merged_from_lora:
+        if not resolved_base_model_path:
+            raise ValueError(
+                "LoRA checkpoint 需要 base model 路径：请提供 --base-model，"
+                "或保留 train_summary.json / adapter_config.json 中的 base_model_name_or_path。"
+            )
         merged_dir = (
             Path(merged_dir)
             if merged_dir is not None
             else checkpoint_dir.parent / f"{checkpoint_dir.name}_merged"
         )
         model_path = merge_lora_checkpoint(
-            base_model_path=base_model_path,
+            base_model_path=resolved_base_model_path,
             adapter_dir=checkpoint_dir,
             merged_dir=merged_dir,
         )
@@ -152,7 +185,7 @@ def run_post_train_eval(
         "train_output_dir": str(train_output_dir),
         "requested_checkpoint": checkpoint,
         "resolved_checkpoint_dir": str(checkpoint_dir),
-        "base_model_path": base_model_path,
+        "base_model_path": resolved_base_model_path,
         "model_path": str(model_path),
         "merged_from_lora": merged_from_lora,
         "merged_model_path": merged_model_path,
@@ -189,6 +222,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default="best",
         help="best / final / stepNNN / checkpoint_stepNNN",
     )
+    parser.add_argument(
+        "--base-model",
+        dest="base_model_path",
+        help="base model 路径；中断训练导致缺少 train_summary.json 时用于 merge LoRA checkpoint",
+    )
     parser.add_argument("--dataset-path", default=DEFAULT_MATH500_PATH)
     parser.add_argument("--dataset-name", default="math500")
     parser.add_argument("--output-path")
@@ -212,6 +250,7 @@ def main() -> None:
     summary = run_post_train_eval(
         train_output_dir=args.train_output_dir,
         checkpoint=args.checkpoint,
+        base_model_path=args.base_model_path,
         dataset_path=args.dataset_path,
         dataset_name=args.dataset_name,
         output_path=args.output_path,

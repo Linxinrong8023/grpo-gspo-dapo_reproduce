@@ -364,6 +364,14 @@ python scripts/post_train_eval.py \
     --merged-dir /data/merged_models/grpo_best \
     --use-vllm \
     --gpu-memory-utilization 0.9
+
+# 如果训练被中断、只留下 checkpoint_best 且没有 train_summary.json
+python scripts/post_train_eval.py \
+    --train-output-dir outputs/train/grpo_math_7000/<timestamp> \
+    --checkpoint best \
+    --base-model models/Qwen2.5-1.5B-Instruct \
+    --use-vllm \
+    --gpu-memory-utilization 0.9
 ```
 
 > **说明**：`configs/eval/` 下的 JSON 配置文件仅作参考，字段不完整，正式评测请使用上述 CLI 命令。
